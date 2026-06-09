@@ -1,0 +1,27 @@
+# Copy to config/settings.yaml and edit.
+
+data_source: yfinance        # yfinance | scraper   (Eran decides)
+history_start: "2010-01-01"  # how far back to collect (TBD with AI owner)
+eod_cutoff_israel: "01:00"   # pull after this local time -> close is final
+
+indices:
+  SPY:        { ticker: "SPY" }
+  QQQ:        { ticker: "QQQ" }
+  TA35:       { ticker: "TA35.TA" }   # note: TA-25 was renamed/expanded to TA-35 in 2017
+  TA125:      { ticker: "TA125.TA" }
+  DAX:        { ticker: "^GDAXI" }
+  DOW:        { ticker: "^DJI" }
+VIX_ticker:   "^VIX"                  # feature only, not a target
+
+horizons: [daily, weekly, monthly]
+
+moving_averages:
+  sma_periods: [50, 100, 150, 200]
+  ema_periods: [50, 100, 150, 200]
+indicators:
+  rsi_period: 14
+  bollinger:  { window: 20, num_std: 2 }
+  avg_volume_days: 90
+
+database:
+  path: "data/algotrade.sqlite"

@@ -1,0 +1,17 @@
+# --- data / numeric ---
+pandas
+numpy
+yfinance            # default data source (backend may swap for scraping)
+pandas-market-calendars   # trading-calendar for smart sync
+
+# --- AI ---
+scikit-learn
+# torch             # uncomment if a neural model is chosen
+
+# --- storage / auth ---
+bcrypt              # password hashing
+PyYAML              # config
+
+# --- UI (presentation layer) ---
+streamlit           # default UI framework (see cli/README.md)
+plotly              # interactive zoom/hover/fullscreen charts
