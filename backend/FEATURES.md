@@ -1,106 +1,112 @@
-# 📊 Feature Catalog
+# 📊 Raw Feature Catalog
 
-> **Single source of truth** for every feature the model consumes.
-> This file is referenced by both the **Backend** (which *produces* these features)
-> and the **AI** module (which *consumes* them).
-> If a feature is added/removed, update it **here first**, then in the code.
+> **Single source of truth** for the raw EOD data the extractor produces (one row per `Date`,
+> per ticker). These are the **raw columns** as they come out of the data layer, with the exact
+> names used in the project. The AI module engineers model-ready features **from** these (see
+> [`../ai/README.md`](../ai/README.md) for which raw columns enter the model directly, which are
+> transformed, and which are dropped).
 
-All features are computed from **end-of-day (EOD) data only** — the system is *not* real-time.
-"Current week / current month" means the still-open candle, measured up to the last closed daily candle.
+All values are end-of-day (EOD). "Current week" and "current month" mean the still-open candle,
+measured up to the last closed daily candle. Column names below match the extractor output
+exactly.
 
 ---
 
-## 1. Price & Returns
+## 0. Index
 
-| # | Feature key | Description | Horizon | Unit |
-|---|-------------|-------------|---------|------|
-| 1 | `close_daily_last` | Close price of the last closed **daily** candle | Daily | price |
-| 2 | `close_weekly_last` | Close price of the last closed **weekly** candle | Weekly | price |
-| 3 | `close_monthly_last` | Close price of the last closed **monthly** candle | Monthly | price |
-| 4 | `pct_change_daily_last` | % change of the last closed daily candle | Daily | % |
-| 5 | `pct_change_week_current` | % change of the **open** (unfinished) weekly candle so far | Weekly | % |
-| 6 | `pct_change_week_prev` | % change of the **last closed** weekly candle | Weekly | % |
-| 7 | `pct_change_month_current` | % change of the **open** (unfinished) monthly candle so far | Monthly | % |
-| 8 | `pct_change_month_prev` | % change of the **last closed** monthly candle | Monthly | % |
+| Column | Meaning |
+|--------|---------|
+| `Date` | trading date of the row |
+| `ticker` | which index the row belongs to (**add when pooling multiple indices**) |
 
-## 2. Moving Averages — Simple (SMA)
+## 1. Close and Returns
 
-| # | Feature key | Description | Periods | Unit |
-|---|-------------|-------------|---------|------|
-| 9  | `sma_daily_{p}`   | Daily SMA | 50, 100, 150, 200 | price |
-| 10 | `sma_weekly_{p}`  | Weekly SMA | 50, 100, 150, 200 | price |
-| 11 | `sma_monthly_{p}` | Monthly SMA | 50, 100, 150, 200 | price |
+> All `pct_change_*` are in **percentage points** (already times 100, for example `-1.89` means
+> minus 1.89 percent). `close_*_last` for weekly and monthly is the **last closed** week or month
+> close (lagged).
 
-## 3. Moving Averages — Exponential (EMA)
+| Column | Meaning | Horizon |
+|--------|---------|---------|
+| `close_daily_last` | last daily close (price) | daily |
+| `close_weekly_last` | last closed weekly close (price) | weekly |
+| `close_monthly_last` | last closed monthly close (price) | monthly |
+| `pct_change_daily_last` | percent move of last daily candle | daily |
+| `pct_change_week_current` | percent move of the open week so far | weekly |
+| `pct_change_week_prev` | percent move of the last closed week | weekly |
+| `pct_change_month_current` | percent move of the open month so far | monthly |
+| `pct_change_month_prev` | percent move of the last closed month | monthly |
 
-| # | Feature key | Description | Periods | Unit |
-|---|-------------|-------------|---------|------|
-| 12 | `ema_daily_{p}`   | Daily EMA | 50, 100, 150, 200 | price |
-| 13 | `ema_weekly_{p}`  | Weekly EMA | 50, 100, 150, 200 | price |
-| 14 | `ema_monthly_{p}` | Monthly EMA | 50, 100, 150, 200 | price |
+## 2. Simple Moving Averages (SMA)
 
-> `{p}` expands to one column per period, e.g. `sma_daily_50`, `sma_daily_100`, ...
+Periods **20, 50, 100, 150, 200** for each horizon.
+
+| Column pattern | Meaning |
+|----------------|---------|
+| `sma_daily_{20,50,100,150,200}` | daily SMAs (price) |
+| `sma_weekly_{20,50,100,150,200}` | weekly SMAs (price) |
+| `sma_monthly_{20,50,100,150,200}` | monthly SMAs (price) |
+
+## 3. Exponential Moving Averages (EMA)
+
+Periods **20, 50, 100, 150, 200** for each horizon.
+
+| Column pattern | Meaning |
+|----------------|---------|
+| `ema_daily_{20,50,100,150,200}` | daily EMAs (price) |
+| `ema_weekly_{20,50,100,150,200}` | weekly EMAs (price) |
+| `ema_monthly_{20,50,100,150,200}` | monthly EMAs (price) |
 
 ## 4. Volume
 
-| # | Feature key | Description | Horizon | Unit |
-|---|-------------|-------------|---------|------|
-| 15 | `volume_prev_day`      | Volume of the previous daily candle | Daily | shares |
-| 16 | `volume_avg_daily_90`  | Average daily volume over the last ~90 trading days | Daily | shares |
-| 17 | `volume_week_current`  | Volume accumulated in the open weekly candle | Weekly | shares |
-| 18 | `volume_week_prev`     | Volume of the last closed weekly candle | Weekly | shares |
-| 19 | `volume_month_current` | Volume accumulated in the open monthly candle | Monthly | shares |
-| 20 | `volume_month_prev`    | Volume of the last closed monthly candle | Monthly | shares |
+| Column | Meaning |
+|--------|---------|
+| `volume_prev_day` | previous day's volume |
+| `volume_avg_daily_90` | average daily volume over about 90 trading days |
+| `volume_week_current` | volume of the open week |
+| `volume_week_prev` | volume of the last closed week |
+| `volume_month_current` | volume of the open month |
+| `volume_month_prev` | volume of the last closed month |
 
-## 5. Range (Low / High)
+## 5. Range (Low and High)
 
-| # | Feature key | Description | Horizon | Unit |
-|---|-------------|-------------|---------|------|
-| 21 | `low_prev_day`, `high_prev_day`         | Low/High of previous daily candle | Daily | price |
-| 22 | `low_week_current`, `high_week_current` | Low/High of the open weekly candle | Weekly | price |
-| 23 | `low_week_prev`, `high_week_prev`       | Low/High of the last closed weekly candle | Weekly | price |
-| 24 | `low_month_current`, `high_month_current` | Low/High of the open monthly candle | Monthly | price |
-| 25 | `low_month_prev`, `high_month_prev`     | Low/High of the last closed monthly candle | Monthly | price |
+| Column | Meaning |
+|--------|---------|
+| `low_prev_day` and `high_prev_day` | previous daily candle low and high |
+| `low_week_current` and `high_week_current` | open weekly candle low and high |
+| `low_week_prev` and `high_week_prev` | last closed weekly candle low and high |
+| `low_month_current` and `high_month_current` | open monthly candle low and high |
+| `low_month_prev` and `high_month_prev` | last closed monthly candle low and high |
 
 ## 6. Bollinger Bands
 
-| # | Feature key | Description | Horizon | Unit |
-|---|-------------|-------------|---------|------|
-| 26 | `bb_upper_daily`, `bb_lower_daily`     | Bollinger upper/lower band (20, 2σ) | Daily | price |
-| 27 | `bb_upper_weekly`, `bb_lower_weekly`   | Bollinger upper/lower band | Weekly | price |
-| 28 | `bb_upper_monthly`, `bb_lower_monthly` | Bollinger upper/lower band | Monthly | price |
+> Parameters from the extractor. Period **20**, **k of 2 sigma**, population std (ddof of 0).
+> `bb_base` is the 20-period SMA. Weekly and monthly fold the current running candle into the
+> window.
 
-## 7. RSI
+| Column | Meaning |
+|--------|---------|
+| `bb_base_daily`, `bb_upper_daily`, `bb_lower_daily` | daily band center (SMA-20), upper, lower (price) |
+| `bb_base_weekly`, `bb_upper_weekly`, `bb_lower_weekly` | weekly band center, upper, lower |
+| `bb_base_monthly`, `bb_upper_monthly`, `bb_lower_monthly` | monthly band center, upper, lower |
 
-| # | Feature key | Description | Horizon | Unit |
-|---|-------------|-------------|---------|------|
-| 29 | `rsi_daily`   | RSI (14) on daily candles | Daily | 0–100 |
-| 30 | `rsi_weekly`  | RSI (14) on weekly candles | Weekly | 0–100 |
-| 31 | `rsi_monthly` | RSI (14) on monthly candles | Monthly | 0–100 |
+## 7. RSI (with its moving average and gap)
 
-## 8. VIX (market-wide fear gauge — **feature, not a prediction target**)
+> Parameters from the extractor. **Wilder's RSI, length 14**. `rsi_ma` is a simple 14-period MA of
+> the RSI (TradingView default). Weekly and monthly include the current running candle's RSI.
 
-| # | Feature key | Description | Horizon | Unit |
-|---|-------------|-------------|---------|------|
-| 32 | `vix_daily_last`   | VIX close of last daily candle | Daily | index |
-| 33 | `vix_weekly_last`  | VIX close of last weekly candle | Weekly | index |
-| 34 | `vix_monthly_last` | VIX close of last monthly candle | Monthly | index |
+| Column | Meaning |
+|--------|---------|
+| `rsi_daily`, `rsi_weekly`, `rsi_monthly` | Wilder RSI(14), 0 to 100, per horizon |
+| `rsi_ma_daily`, `rsi_ma_weekly`, `rsi_ma_monthly` | SMA-14 of the RSI |
+| `rsi_gap_daily`, `rsi_gap_weekly`, `rsi_gap_monthly` | RSI minus its MA (momentum acceleration) |
 
----
+## 8. VIX (global risk gauge, a feature, not a target)
 
-## 🎯 Prediction Targets (labels)
-
-For each `(index, horizon)` the model predicts the **% move of the next candle's close**
-relative to the last closed candle, expressed as a **range with confidence**:
-
-| Output | Description |
-|--------|-------------|
-| `pred_low`  | Lower bound of the expected close % move |
-| `pred_high` | Upper bound of the expected close % move |
-| `confidence` | Model confidence in the range (e.g. 0–1) |
-
-> The range can be derived from a predicted mean ± k·σ, or from quantile regression.
-> See `ai/README.md` for the modeling discussion.
+| Column | Meaning |
+|--------|---------|
+| `vix_daily_last` | VIX close, previous day (D minus 1) |
+| `vix_weekly_last` | VIX close, last closed week |
+| `vix_monthly_last` | VIX close, last closed month |
 
 ---
 
@@ -110,11 +116,13 @@ relative to the last closed candle, expressed as a **range with confidence**:
 |--------------|-----------------|-------|
 | S&P 500 ETF | `SPY` | |
 | Nasdaq 100 ETF | `QQQ` | |
-| TA-35 | `TA35.TA` | **TA-25 → TA-35** (TA-25 was renamed/expanded to TA-35 in 2017; treat as one series) |
+| TA-35 | `TA35.TA` | TA-25 was renamed and expanded to TA-35 in 2017, one continuous series |
 | TA-125 | `TA125.TA` | |
 | DAX | `^GDAXI` | |
 | Dow Jones | `^DJI` | |
-| VIX | `^VIX` | **Feature only**, not a target |
+| VIX | `^VIX` | feature only, not a target |
 
-> Ticker symbols are configurable in `config/settings.yaml`. Verify each symbol against the
-> chosen data source before first run.
+> Prediction targets (per horizon, `target_daily`, `target_weekly`, `target_monthly`) are the
+> **percent move of the next or current candle's close** vs. the last daily close. They are
+> **constructed in the AI module**, not part of the raw extract. See
+> [`../ai/README.md`](../ai/README.md).
