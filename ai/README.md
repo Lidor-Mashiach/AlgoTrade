@@ -21,12 +21,13 @@ turned into new features, and which features still need to be added.
 6. [Ticker pooling, imbalance, and why not single stocks](#-ticker-pooling-imbalance-and-why-not-single-stocks)
 7. [Handling small data](#-handling-small-data)
 8. [Prediction targets](#-prediction-targets)
-9. [Feature tables (per horizon)](#-feature-tables)
-10. [Features that must still be added](#-features-that-must-still-be-added)
-11. [Indicator parameters and conventions](#-indicator-parameters-and-conventions)
-12. [Inference contract](#-inference-contract)
-13. [Retraining logic](#-retraining-logic)
-14. [Development pipeline](#-development-pipeline)
+9. [Backend storage and how the AI separates features](#-backend-storage-and-how-the-ai-separates-features)
+10. [Feature tables (per horizon)](#-feature-tables)
+11. [Features that must still be added](#-features-that-must-still-be-added)
+12. [Indicator parameters and conventions](#-indicator-parameters-and-conventions)
+13. [Inference contract](#-inference-contract)
+14. [Retraining logic](#-retraining-logic)
+15. [Development pipeline](#-development-pipeline)
 
 ---
 
@@ -108,14 +109,55 @@ express a range. To get a range we ask the model three different questions.
 So the band **[Q10, Q90]** is an **80% interval** — historically, about 80% of closes landed
 inside it. The coverage level (80 to 85%) is a **global variable**, not user-selectable.
 
-### What makes each booster behave differently (the loss parameter)
+### The key idea — the label does NOT carry the quantile
 
-Each booster trains with a **lopsided penalty** on its errors. For Q90, being **too low**
-(predicting under the truth) is punished **9 times harder** than being too high. To avoid the
-heavy penalty the model learns to sit **high**, at a line only about 10% of points exceed. For
-Q10 it is the mirror image — being too high is punished 9 times harder, so the model sits low.
-For Q50 the penalty is symmetric, so it lands in the middle (the median). That penalty ratio is
-the **single** thing that changes between the three boosters. Everything else is identical.
+This is the part that feels paradoxical, so read it slowly. The label is **a single real value** —
+the actual percent move that happened. It is **not** "the Q10 value" or "the Q90 value". There is
+one label per row, shared by all three boosters of that horizon (see How the label column is
+built). So the question is real — how do three models with the **same rows, the same label, and the
+same hyperparameters** end up predicting three **different** numbers?
+
+The answer is the **loss function**, and nothing else. A model learns by minimizing its loss. If
+you change *how the loss counts an error*, you change *where the model settles*, even though the
+data never changed.
+
+### The asymmetric loss (pinball / quantile loss)
+
+Normal regression uses a **symmetric** loss — predicting 2 too high is just as bad as 2 too low,
+so the model settles on the **average**. Quantile regression uses a **lopsided** loss controlled by
+one number, the target quantile (call it `q`, where Q10 means q = 0.1, Q90 means q = 0.9).
+
+```
+error = actual − predicted
+
+loss =        q   * error      when error >= 0   (we predicted too LOW)
+loss =   (q − 1)  * error      when error <  0   (we predicted too HIGH)
+```
+
+Plug in the numbers:
+
+- **Q90** (q = 0.9). Predicting too low costs `0.9 * error`. Predicting too high costs `0.1 * error`.
+  Being too low hurts **9 times more**, so to minimize total loss the model deliberately aims
+  **high** — it settles at the line only about 10% of real outcomes exceed. That line *is* the 90th
+  percentile.
+- **Q10** (q = 0.1). The mirror image — being too high hurts 9 times more, so the model aims low and
+  settles at the 10th percentile.
+- **Q50** (q = 0.5). Both sides cost the same. The model settles in the middle — the median.
+
+That single number `q` is the **only** thing that differs between the three boosters. Same data,
+same label, same tree depth and learning rate. In LightGBM it is literally:
+
+```python
+LGBMRegressor(objective="quantile", alpha=0.10, **shared_params)  # Q10
+LGBMRegressor(objective="quantile", alpha=0.50, **shared_params)  # Q50
+LGBMRegressor(objective="quantile", alpha=0.90, **shared_params)  # Q90
+```
+
+**Intuition.** Imagine estimating your commute, with a penalty for guessing wrong. If arriving
+**late** (you guessed too short) is punished 9 times harder than arriving early, you will quote a
+**conservative, high** number — say 45 minutes even when the average is 30 — because lateness is
+expensive. That conservative-high estimate is exactly Q90. Equal penalties would give you the
+median. Same trip, same history, different penalty, different answer.
 
 ### Why we predict a band instead of chasing perfection
 
@@ -202,6 +244,61 @@ percent is, and percent is comparable across tickers.
 | `target_daily` | (close_next_day / close_today) − 1 |
 | `target_weekly` | (close_at_week_end / last_daily_close) − 1 |
 | `target_monthly` | (close_at_month_end / last_daily_close) − 1 |
+
+### How the label column is built
+
+The label is **not** in the raw data. The AI pipeline creates it by **looking forward** and
+attaching each row's future outcome to the row, using a backward shift of the next candle's close.
+
+- **One label per horizon, not per quantile.** The three boosters (Q10, Q50, Q90) of a horizon all
+  train on the **same** `y` — the actual percent move that happened. They differ only in the loss,
+  not in the label. So there are exactly **three** label columns total (`target_daily`,
+  `target_weekly`, `target_monthly`).
+- **The label is a single real value, not a quantile.** It does not represent Q10, Q50, or Q90 — it
+  is just what happened. The three quantiles are produced entirely by the asymmetric loss at
+  training time (see The key idea and The asymmetric loss under Why three quantiles). The same label
+  feeds all three, and the loss is what splits them apart.
+- ⚠️ **Looking forward is allowed for the label only.** It must **never** touch the features (`X`).
+  Any feature that peeks at future data is **leakage**, and the model will look perfect in training
+  and fail in reality. The extractor already guards this with `shift(1)` and `prev` columns. Keep
+  that discipline when building the label.
+
+---
+
+## 🗄️ Backend storage and how the AI separates features
+
+### How the backend stores it — one database per ticker
+
+The data layer keeps **one database (or table) per ticker** — `SPY`, `QQQ`, `TA35`, and so on —
+each holding only that ticker's **raw** rows. It does **not** split storage by horizon. Every row
+is one trading day and is **wide**: it carries the daily, weekly, and monthly raw columns together,
+exactly as the extractor produced them. The only addition needed for pooling is a `ticker` column
+(or it is implied by which database the row came from).
+
+So responsibility splits cleanly:
+
+- **Backend** — raw data, one database per ticker, wide rows, no horizon split.
+- **AI (my side)** — at the data-extraction stage, read those per-ticker tables, stack them into
+  one pooled table (adding `ticker`), then separate features by horizon and build the labels.
+
+### How the AI separates features per horizon — by name suffix
+
+The wide row is not "daily" or "weekly". The AI module selects columns **by their name suffix**,
+using the per-horizon tables in this document as the authoritative list:
+
+- **daily dataset** — columns ending in or containing `_daily` or `_prev_day`, plus the shared columns.
+- **weekly dataset** — columns containing `_week` or `_weekly`, plus the shared columns.
+- **monthly dataset** — columns containing `_month` or `_monthly`, plus the shared columns.
+
+No column name collides across horizons (every name carries its own horizon token), so the split is
+unambiguous — there is no risk of a weekly column being mistaken for a daily one.
+
+**Shared columns** added to all three datasets: `ticker` and `Date`. The cyclical date features
+`month_sin` and `month_cos` are also shared, **but note they are not raw** — the AI must **create**
+them from `Date` during feature engineering, the same as `realized_vol` and `days_to_close`.
+
+**VIX is not shared** — each horizon has its own (`vix_daily_last`, `vix_weekly_last`,
+`vix_monthly_last`), so each goes only to its matching dataset.
 
 ---
 
