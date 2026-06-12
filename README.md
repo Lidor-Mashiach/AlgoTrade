@@ -130,8 +130,8 @@ interactive zoomable charts), and settings.
 | Pillar | Owner | Scope |
 |--------|-------|-------|
 | 🔧 Backend / data | **Eran** | data acquisition, features, sync, storage, API |
-| 🧠 AI | **You (me)** | datasets, models, training, incremental update, inference |
-| 🖥️ CLI | *(shared / TBD)* | UI, screens, charts, auth flow |
+| 🧠 AI | **Lidor** | datasets, models, training, incremental update, inference |
+| 🖥️ CLI | **Liel** | UI, screens, charts, auth flow |
 
 ---
 
