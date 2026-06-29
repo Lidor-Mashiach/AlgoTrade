@@ -35,24 +35,71 @@ turned into new features, and which features still need to be added.
 
 ```
 ai/
-├── README.md             ← you are here (the authoritative AI spec)
-├── datasets/
-│   └── builder.py        ← build train/val/test from the feature table (group-aware split)
-├── models/
-│   ├── base_model.py     ← interface: fit / predict / save / load
-│   └── registry.py       ← resolve the right booster for (horizon, quantile)
-├── training/
-│   └── train.py          ← full training run per (horizon × quantile) + validation + plots
-├── inference/
-│   └── predictor.py      ← returns {low, high, confidence}
-├── results/              ← latest-run plots only (EDA, evaluation), non-interactive
-└── artifacts/            ← saved boosters (git-ignored)
+├── README.md                          ← you are here (the authoritative AI spec)
+├── FEATURES.md                        ← model-facing feature catalog (engineered + passthrough)
+├── config.py                          ← global constants, paths, and model path helpers
+├── run_pipeline.py                    ← top-level runner: stage 1 → 2 → 3
+│
+├── utils/                             ← shared helpers (no stage number, used everywhere)
+│   ├── gpu.py                         ← LightGBM device resolution with CPU fallback
+│   ├── plotting.py                    ← non-interactive figures and results-folder handling
+│   ├── io_store.py                    ← intermediate data store between stages
+│   ├── runner.py                      ← step runner behind every folder runner
+│   └── modeling.py                    ← shared model code and hyperparameters (stages 2 and 3)
+│
+├── 1_PreTraining/
+│   ├── README.md
+│   ├── run_pretraining.py             ← runner: extract → check missing → features → EDA → split
+│   ├── Data-Extraction/
+│   │   └── extract_dataset.py         ← pool per-ticker tables, split by suffix into 3 horizons
+│   └── Feature-Eng/
+│       ├── check_missing.py           ← missing-value report and basic cleaning
+│       ├── build_features.py          ← relative features and the label, drop raw price columns
+│       ├── run_eda.py                 ← correlation heatmap and non-linear association
+│       └── split_dataset.py           ← group-aware, per-ticker proportional train/test split
+│
+├── 2_Train/
+│   ├── README.md
+│   ├── run_train.py                   ← runner: train all horizons, then evaluate on test
+│   ├── train_core.py                  ← stage-2 engine (GroupKFold, learning curves, dev models)
+│   ├── train_daily.py                 ← thin per-horizon wrappers
+│   ├── train_weekly.py
+│   ├── train_monthly.py
+│   ├── test_core.py                   ← shared evaluation engine (metrics and figures)
+│   ├── test_daily.py
+│   ├── test_weekly.py
+│   └── test_monthly.py
+│
+├── 3_Production-FinalTraining/
+│   ├── README.md
+│   ├── run_final_training.py          ← runner: build production models, then smoke test
+│   ├── build_final_models.py          ← refit on all data, save the 9 production boosters
+│   ├── predictor.py                   ← returns {low, mid, high, confidence}
+│   └── verify_inference.py            ← loads the models and runs a dummy prediction
+│
+├── Evaluation/                        ← library, called from stage 2 (no stage number)
+│   ├── README.md                      ← what each metric means, why it was chosen, the advantage here
+│   └── metrics.py                     ← coverage, band width, pinball, confusion matrix, and more
+│
+├── Inference_models/                  ← the 9 production boosters that ship, per horizon (tracked)
+│   ├── daily/      (q10.txt · q50.txt · q90.txt · metadata.json)
+│   ├── weekly/     (q10.txt · q50.txt · q90.txt · metadata.json)
+│   └── monthly/    (q10.txt · q50.txt · q90.txt · metadata.json)
+│
+├── dev_models/                        ← stage-2 development boosters, diagnostic only (git-ignored)
+├── data_store/                        ← intermediate data that flows between stages (git-ignored)
+└── results/                           ← latest run only, non-interactive
+    ├── plots/                         ← figures (EDA, learning curves, interval, confusion)
+    ├── reports/                       ← readable markdown summaries
+    ├── metrics/                       ← metric values as JSON, pinball per quantile
+    └── tables/                        ← CSV tables (correlations, association, feature lists)
 ```
 
 > Note vs. the early scaffold. There is **no** incremental or warm-start training file — we
-> settled on **full retrain only** (see the Retraining logic section). The registry keys on
+> settled on **full retrain only** (see the Retraining logic section). Boosters are keyed by
 > `(horizon, quantile)`, not `(index, horizon)`, because the ticker is a **feature**, not a
-> separate model.
+> separate model. Each pipeline folder is driven by its own runner with a commentable `STEPS`
+> list, and `run_pipeline.py` chains the three folder runners end to end.
 
 ---
 
@@ -456,7 +503,7 @@ computation exactly.
 The single entry point the backend calls. Keep this signature stable.
 
 ```python
-# inference/predictor.py
+# 3_Production-FinalTraining/predictor.py
 def predict(ticker: str, horizon: str, features: dict) -> dict:
     """
     Returns:

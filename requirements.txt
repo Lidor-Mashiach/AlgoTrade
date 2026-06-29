@@ -1,17 +1,25 @@
-# --- data / numeric ---
-pandas
-numpy
-yfinance            # default data source (backend may swap for scraping)
-pandas-market-calendars   # trading-calendar for smart sync
+# ============================================================================
+# Python requirements for Algo-Trade.
+# Sections by module: shared / AI / Backend / CLI.
+# Verified with an AST scan of every .py in the repo (any depth, not regex).
+#
+# The CLI (cli/) is a React + Vite + Tailwind app. Its packages live in
+# cli/package.json and are NOT pip dependencies; they are listed at the bottom
+# only as a reference comment.
+# ============================================================================
 
-# --- AI ---
-scikit-learn
-# torch             # uncomment if a neural model is chosen
+# --- shared (AI, Backend) ---
+pandas                    # dataframes                                  (ai, backend)
 
-# --- storage / auth ---
-bcrypt              # password hashing
-PyYAML              # config
+# --- AI (ai/) ---
+numpy                     # numerics
+lightgbm                  # quantile-regression boosters (the core model)
+scikit-learn              # GroupKFold split and mutual information for EDA
+matplotlib                # non-interactive figures (EDA and evaluation)
+pyarrow                   # parquet intermediate store (falls back to pickle if missing)
+# torch                   # OPTIONAL: only a friendly GPU name in logs (ai/utils/gpu.py)
 
-# --- UI (presentation layer) ---
-streamlit           # default UI framework (see cli/README.md)
-plotly              # interactive zoom/hover/fullscreen charts
+# --- Backend (backend/) ---
+yfinance                  # end-of-day market-data source
+
+# --- CLI (cli/): JavaScript / Node, managed in cli/package.json (NOT pip) --- instead use npm install
