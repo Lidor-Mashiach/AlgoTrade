@@ -1,3 +1,6 @@
+# database
+*.db
+
 # data & secrets
 data/
 config/settings.yaml

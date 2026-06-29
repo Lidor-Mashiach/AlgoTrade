@@ -1,0 +1,5 @@
+{
+  "tickers": ["SPY", "QQQ", "TA35.TA", "^TA125.TA", "^GDAXI", "^DJI"],
+  "periods": [10, 50, 100, 150, 200],
+  "db_name": "backend\\database.db"
+}

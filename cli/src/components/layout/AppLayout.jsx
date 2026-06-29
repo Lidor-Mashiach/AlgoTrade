@@ -9,9 +9,14 @@ export default function AppLayout({ children }) {
           AlgoTrade
         </div>
 
-        <button className="rounded-2xl border border-slate-200 px-5 py-3 text-base font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
-          🌙 Dark
-        </button>
+        <div className="flex items-center gap-1 rounded-full bg-slate-100 p-1">
+          <button className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900 shadow-sm">
+            Light
+          </button>
+          <button className="rounded-full px-4 py-2 text-sm font-semibold text-slate-500">
+            Dark
+          </button>
+        </div>
       </header>
 
       <div className="flex">
